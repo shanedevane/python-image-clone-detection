@@ -12,13 +12,17 @@ import uuid
 from matplotlib import pyplot as plt
 from fractions import Fraction
 from decimal import Decimal
+from random import randint
 
-
+# ideally should use a design pattern (strategy?) instead of "enable" variabless
 
 class ImageCloneDetector:
     IMAGE_BLOCKS = 15
     SAVE_BLOCK_IMAGES_OUTPUT = False
+    SAVE_DUPLICATE_IMAGES_OUTPUT = True
     DEBUG_CONSOLE_OUTPUT = True
+    ENABLE_IC_DIFF_COMPARISION = False   # slow
+    ENABLE_EXACT_PIXEL_COMPARISION = False
 
     def __init__(self, file_path):
         self._file_path = file_path
@@ -31,6 +35,24 @@ class ImageCloneDetector:
     def json(self):
         return json.dumps(self._json_data)
 
+    @staticmethod
+    def _block_comparison_difference(image_a, image_b):
+        try:
+            if IC.difference(image_a, image_b).getbbox() is None:
+                return True
+        except:
+            print('exception {0}'.format(sys.exc_info()[0]))
+        return False
+
+    @staticmethod
+    def _block_comparision_random_exact_pixel(image_a, image_b):
+        TEST_PIXELS_AMOUNT = 3      # later make this % of the block
+        for x in range(TEST_PIXELS_AMOUNT):
+            test_x = randint(0, ImageCloneDetector.IMAGE_BLOCKS-1)
+            test_y = randint(0, ImageCloneDetector.IMAGE_BLOCKS-1)
+            if not image_a.getpixel((test_x, test_y)) == image_b.getpixel((test_x, test_y)):
+                return False
+
     def _compare_blocks(self):
         blocks = list(self._blocks)
 
@@ -42,21 +64,26 @@ class ImageCloneDetector:
                 print('processing left {0}'.format(len(blocks)))
 
             for num, block in enumerate(blocks):
-                try:
-                    if IC.difference(image_block, block).getbbox() is None:
-                        self._duplicate_blocks.append(block)
+
+                if ImageCloneDetector.ENABLE_IC_DIFF_COMPARISION:
+                    if self._block_comparison_difference(image_block, block):
+                        self._duplicate_blocks.append(image_block)
+
                         if ImageCloneDetector.DEBUG_CONSOLE_OUTPUT:
                             print('processing {0} of {1}'.format(num, len(blocks)))
                             print('found duplicate block {0}'.format(len(self._duplicate_blocks)))
 
-                        if ImageCloneDetector.SAVE_BLOCK_IMAGES_OUTPUT:
+                        if ImageCloneDetector.SAVE_DUPLICATE_IMAGES_OUTPUT:
                             self._save_image_block_for_debug(image_block,
                                                              'output/duplicates/',
                                                              '{0}.jpg'
                                                              .format(uuid.uuid4()))
                         break
-                except:
-                    print('exception {0}'.format(sys.exc_info()[0]))
+
+                if ImageCloneDetector.ENABLE_EXACT_PIXEL_COMPARISION:
+                    if self._block_comparision_random_exact_pixel(image_block, block):
+                        self._duplicate_blocks.append(image_block)
+
         return self._duplicate_blocks
 
     def _save_image_block_for_debug(self, image_block, folder, file_name):
@@ -93,12 +120,17 @@ class ImageCloneDetector:
 
         return self._blocks
 
+    def _walk_through_image_and_hash_block_compare(self):
+        
+        pass
+
     def execute(self):
         # self._grey_image = Image.open(self._file_path).convert('L')
-        self._grey_image = Image.open(self._file_path)  # this is colour image!
+        # self._grey_image = Image.open(self._file_path)  # this is colour image!
+        self._grey_image = Image.open(self._file_path).convert('RGB')  # this is colour image!
         # self._blurred_image = self._grey_image.filter(ImageFilter.SMOOTH_MORE)
-        self._blocks = self._split_up_image_into_blocks()
-        duplicates = self._compare_blocks()
+        # self._blocks = self._split_up_image_into_blocks()
+        # duplicates = self._compare_blocks()
 
 
 if __name__ == "__main__":
