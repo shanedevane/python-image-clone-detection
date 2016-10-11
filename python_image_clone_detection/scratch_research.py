@@ -18,9 +18,10 @@ from random import randint
 
 class ImageCloneDetector:
     IMAGE_BLOCKS = 15
+    DUPLICATE_DISTANCE_MINIMUM = 0.02
     SAVE_BLOCK_IMAGES_OUTPUT = False
     SAVE_DUPLICATE_IMAGES_OUTPUT = True
-    DEBUG_CONSOLE_OUTPUT = True
+    DEBUG_CONSOLE_OUTPUT = False
     ENABLE_IC_DIFF_COMPARISION = False   # slow
     ENABLE_EXACT_PIXEL_COMPARISION = False
 
@@ -28,6 +29,7 @@ class ImageCloneDetector:
         self._file_path = file_path
         self._json_data = list()
         self._image = None
+        self._grey_image = None
         self._blocks = list()
         self._duplicate_blocks = list()
 
@@ -120,24 +122,102 @@ class ImageCloneDetector:
 
         return self._blocks
 
-    def _walk_through_image_and_hash_block_compare(self):
-        
+    def _image_avg_hash(self, image):
+        image = image.convert("L")  # convert to greyscale (not sure about doing this)
+        pixels = list(image.getdata())
+        block_size_normalizer = ImageCloneDetector.IMAGE_BLOCKS * ImageCloneDetector.IMAGE_BLOCKS   # overhead?
+        # avg = sum(pixels) / block_size_normalizer
+        avg = sum(pixels)
+        return avg
+
+    def _image_avg_rgb_hash(self, image):
+        rgb_data = list(image.getdata())
+        red_sum = sum([r for r, g, b in rgb_data])
+        blue_sum = sum([b for r, g, b in rgb_data])
+        green_sum = sum([g for r, g, b in rgb_data])
+        return red_sum, blue_sum, green_sum
+
+    # for performance we could always add in both numbers (ie. the rounded up and rounded down version)
+    # and have a pure lookup instead?
+
+    def _is_potential_duplicate(self, num_a, num_b):
+        if abs(num_a-num_b) < ImageCloneDetector.DUPLICATE_DISTANCE_MINIMUM:
+            print('potential duplicate {0} {1} abs {2}'.format(num_a, num_b, abs(num_a-num_b)))
+            return True
+        return False
+
+    def _is_rgb_potential_duplicate(self, rgb_a, rgb_b):
+        min = ImageCloneDetector.DUPLICATE_DISTANCE_MINIMUM
+        if abs(rgb_a[0]-rgb_b[0]) < min and \
+            abs(rgb_a[1]-rgb_b[1]) < min and \
+            abs(rgb_a[2]-rgb_b[2]) < min:
+            # print('potential duplicate')
+            return True
+        return False
+
+    def _slide_through_image_and_check_duplicates(self):
         pass
 
+    def _walk_through_image_and_hash_block_compare(self):
+        image_width, image_height = self._grey_image.size
+        image_width += ImageCloneDetector.IMAGE_BLOCKS
+        image_height += ImageCloneDetector.IMAGE_BLOCKS
+
+        potential_duplicates = list()
+        all_hashes = dict()
+
+        for num, x in enumerate(range(0, image_width, ImageCloneDetector.IMAGE_BLOCKS)):
+            # print('{0} of {1}'.format(num, (image_width/ImageCloneDetector.IMAGE_BLOCKS)))
+            for y in range(0, image_height, ImageCloneDetector.IMAGE_BLOCKS):
+                block_top = y
+                block_left = x
+                block_bottom = y + ImageCloneDetector.IMAGE_BLOCKS
+                block_right = x + ImageCloneDetector.IMAGE_BLOCKS
+
+                block = (block_left, block_top, block_right, block_bottom)
+                image_block = self._image.crop(block)
+                # image_hash = self._image_avg_hash(image_block)
+                image_hash = self._image_avg_rgb_hash(image_block)
+                # print(image_hash)
+
+                # hash_key = str(list(image_hash))
+                hash_key = ''.join(str(x) for x in list(image_hash))
+                if hash_key in all_hashes:
+                    potential_duplicates.append(image_block)
+                else:
+                    all_hashes[hash_key] = None
+
+                # too slow obviously
+                # duplicate_found = False
+                # for img_hash in all_hashes:
+                #     if self._is_rgb_potential_duplicate(image_hash, img_hash):
+                #         potential_duplicates.append(image_block)
+                #         duplicate_found = True
+                #         break
+                #
+                # if not duplicate_found:
+                #     all_hashes.append(image_hash)
+
+        return potential_duplicates
+
     def execute(self):
-        # self._grey_image = Image.open(self._file_path).convert('L')
-        # self._grey_image = Image.open(self._file_path)  # this is colour image!
-        self._grey_image = Image.open(self._file_path).convert('RGB')  # this is colour image!
+        self._image = Image.open(self._file_path)
+        self._grey_image = self._image.convert('L')
         # self._blurred_image = self._grey_image.filter(ImageFilter.SMOOTH_MORE)
+        # self._grey_image = Image.open(self._file_path)  # this is colour image!
+        # self._grey_image = Image.open(self._file_path).convert('RGB')  # this is colour image!
         # self._blocks = self._split_up_image_into_blocks()
+        print(len(self._blocks))
         # duplicates = self._compare_blocks()
 
+        dups = self._walk_through_image_and_hash_block_compare()
+
+        for x, dup in enumerate(dups):
+            dup.save('../output/dups/{0}.jpg'.format(x))
+        print(len(dups))
 
 if __name__ == "__main__":
     detector = ImageCloneDetector('../Resources/cloned.jpg')
     detector.execute()
     print(detector.json)
-
-
-
 
