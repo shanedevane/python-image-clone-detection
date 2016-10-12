@@ -13,11 +13,12 @@ from matplotlib import pyplot as plt
 from fractions import Fraction
 from decimal import Decimal
 from random import randint
+import math
 
 # ideally should use a design pattern (strategy?) instead of "enable" variabless
 
 class ImageCloneDetector:
-    IMAGE_BLOCKS = 15
+    IMAGE_BLOCK_SIZE = 20
     DUPLICATE_DISTANCE_MINIMUM = 0.02
     SAVE_BLOCK_IMAGES_OUTPUT = False
     SAVE_DUPLICATE_IMAGES_OUTPUT = True
@@ -50,8 +51,8 @@ class ImageCloneDetector:
     def _block_comparision_random_exact_pixel(image_a, image_b):
         TEST_PIXELS_AMOUNT = 3      # later make this % of the block
         for x in range(TEST_PIXELS_AMOUNT):
-            test_x = randint(0, ImageCloneDetector.IMAGE_BLOCKS-1)
-            test_y = randint(0, ImageCloneDetector.IMAGE_BLOCKS-1)
+            test_x = randint(0, ImageCloneDetector.IMAGE_BLOCK_SIZE-1)
+            test_y = randint(0, ImageCloneDetector.IMAGE_BLOCK_SIZE-1)
             if not image_a.getpixel((test_x, test_y)) == image_b.getpixel((test_x, test_y)):
                 return False
 
@@ -96,15 +97,15 @@ class ImageCloneDetector:
 
     def _split_up_image_into_blocks(self):
         image_width, image_height = self._grey_image.size
-        image_width += ImageCloneDetector.IMAGE_BLOCKS
-        image_height += ImageCloneDetector.IMAGE_BLOCKS
+        image_width += ImageCloneDetector.IMAGE_BLOCK_SIZE
+        image_height += ImageCloneDetector.IMAGE_BLOCK_SIZE
 
-        for x in range(0, image_width, ImageCloneDetector.IMAGE_BLOCKS):
-            for y in range(0, image_height, ImageCloneDetector.IMAGE_BLOCKS):
+        for x in range(0, image_width, ImageCloneDetector.IMAGE_BLOCK_SIZE):
+            for y in range(0, image_height, ImageCloneDetector.IMAGE_BLOCK_SIZE):
                 block_top = y
                 block_left = x
-                block_bottom = y + ImageCloneDetector.IMAGE_BLOCKS
-                block_right = x + ImageCloneDetector.IMAGE_BLOCKS
+                block_bottom = y + ImageCloneDetector.IMAGE_BLOCK_SIZE
+                block_right = x + ImageCloneDetector.IMAGE_BLOCK_SIZE
 
                 block = (block_left, block_top, block_right, block_bottom)
                 image_block = self._grey_image.crop(block)
@@ -125,17 +126,32 @@ class ImageCloneDetector:
     def _image_avg_hash(self, image):
         image = image.convert("L")  # convert to greyscale (not sure about doing this)
         pixels = list(image.getdata())
-        block_size_normalizer = ImageCloneDetector.IMAGE_BLOCKS * ImageCloneDetector.IMAGE_BLOCKS   # overhead?
+        block_size_normalizer = ImageCloneDetector.IMAGE_BLOCK_SIZE * ImageCloneDetector.IMAGE_BLOCK_SIZE   # overhead?
         # avg = sum(pixels) / block_size_normalizer
         avg = sum(pixels)
         return avg
+
+    #OPTIONS
+    # avg full block and if averages are similar then go further into detection
+
+
+    # normalise SUM of rgb (and store true value in hash)
+    # SUM = RGB 71039, 47264, 54734
+
+    def _round_up(self, rgb_num):
+        NORMALISE_AMOUNT = 100        # this should be some ratio vs block size
+        rounded_up = int(math.ceil(rgb_num / NORMALISE_AMOUNT) * NORMALISE_AMOUNT)
+        return rounded_up
 
     def _image_avg_rgb_hash(self, image):
         rgb_data = list(image.getdata())
         red_sum = sum([r for r, g, b in rgb_data])
         blue_sum = sum([b for r, g, b in rgb_data])
         green_sum = sum([g for r, g, b in rgb_data])
-        return red_sum, blue_sum, green_sum
+        round_up_red_sum = self._round_up(red_sum)
+        round_up_blue_sum = self._round_up(blue_sum)
+        round_up_green_sum = self._round_up(green_sum)
+        return round_up_red_sum, round_up_blue_sum, round_up_green_sum
 
     # for performance we could always add in both numbers (ie. the rounded up and rounded down version)
     # and have a pure lookup instead?
@@ -155,29 +171,29 @@ class ImageCloneDetector:
             return True
         return False
 
-    def _slide_through_image_and_check_duplicates(self):
-        pass
+    # use OPEN CV histogram comparision
 
     def _walk_through_image_and_hash_block_compare(self):
         image_width, image_height = self._grey_image.size
-        image_width += ImageCloneDetector.IMAGE_BLOCKS
-        image_height += ImageCloneDetector.IMAGE_BLOCKS
+        image_width += ImageCloneDetector.IMAGE_BLOCK_SIZE
+        image_height += ImageCloneDetector.IMAGE_BLOCK_SIZE
 
         potential_duplicates = list()
         all_hashes = dict()
 
-        for num, x in enumerate(range(0, image_width, ImageCloneDetector.IMAGE_BLOCKS)):
+        for num, x in enumerate(range(0, image_width, ImageCloneDetector.IMAGE_BLOCK_SIZE)):
             # print('{0} of {1}'.format(num, (image_width/ImageCloneDetector.IMAGE_BLOCKS)))
-            for y in range(0, image_height, ImageCloneDetector.IMAGE_BLOCKS):
+            for y in range(0, image_height, ImageCloneDetector.IMAGE_BLOCK_SIZE):
                 block_top = y
                 block_left = x
-                block_bottom = y + ImageCloneDetector.IMAGE_BLOCKS
-                block_right = x + ImageCloneDetector.IMAGE_BLOCKS
+                block_bottom = y + ImageCloneDetector.IMAGE_BLOCK_SIZE
+                block_right = x + ImageCloneDetector.IMAGE_BLOCK_SIZE
 
                 block = (block_left, block_top, block_right, block_bottom)
+                # image_block = self._blurred_image.crop(block)
                 image_block = self._image.crop(block)
-                # image_hash = self._image_avg_hash(image_block)
                 image_hash = self._image_avg_rgb_hash(image_block)
+
                 # print(image_hash)
 
                 # hash_key = str(list(image_hash))
@@ -203,7 +219,16 @@ class ImageCloneDetector:
     def execute(self):
         self._image = Image.open(self._file_path)
         self._grey_image = self._image.convert('L')
+
+        # SHOULD RESIZE THE IMAGE IN CASE IT'S 12MB or something
+        # BLOCK SIZE SHOULD BE RELEVANT TO THE IMAGE SIZE???
+
         # self._blurred_image = self._grey_image.filter(ImageFilter.SMOOTH_MORE)
+        # self._blurred_image = self._image.filter(ImageFilter.GaussianBlur(50))
+
+        # self._blurred_image.save('bllurred.jpg')
+
+
         # self._grey_image = Image.open(self._file_path)  # this is colour image!
         # self._grey_image = Image.open(self._file_path).convert('RGB')  # this is colour image!
         # self._blocks = self._split_up_image_into_blocks()
@@ -212,8 +237,8 @@ class ImageCloneDetector:
 
         dups = self._walk_through_image_and_hash_block_compare()
 
-        for x, dup in enumerate(dups):
-            dup.save('../output/dups/{0}.jpg'.format(x))
+        # for x, dup in enumerate(dups):
+        #     dup.save('../output/dups/{0}.jpg'.format(x))
         print(len(dups))
 
 if __name__ == "__main__":
