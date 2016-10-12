@@ -200,6 +200,7 @@ class ImageCloneDetector:
                 hash_key = ''.join(str(x) for x in list(image_hash))
                 if hash_key in all_hashes:
                     potential_duplicates.append(image_block)
+                    break
                 else:
                     all_hashes[hash_key] = None
 
@@ -220,6 +221,8 @@ class ImageCloneDetector:
         self._image = Image.open(self._file_path)
         self._grey_image = self._image.convert('L')
 
+        self._image.save('../output/image.jpg')
+
         # SHOULD RESIZE THE IMAGE IN CASE IT'S 12MB or something
         # BLOCK SIZE SHOULD BE RELEVANT TO THE IMAGE SIZE???
 
@@ -237,8 +240,8 @@ class ImageCloneDetector:
 
         dups = self._walk_through_image_and_hash_block_compare()
 
-        # for x, dup in enumerate(dups):
-        #     dup.save('../output/dups/{0}.jpg'.format(x))
+        for x, dup in enumerate(dups):
+            dup.save('../output/dups/{0}.jpg'.format(x))
         print(len(dups))
 
 if __name__ == "__main__":
